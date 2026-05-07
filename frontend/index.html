@@ -344,7 +344,9 @@ const ProcessView = ({ schools }) => {
         }
         setLoading(false);
       } catch (err) {
-        setError('Failed to parse Excel. Ensure it is a valid .xlsx file.');
+        console.error('EXCEL PARSE ERROR:', err);
+        const realMsg = err?.message || err?.toString() || 'Unknown error';
+        setError('Excel Error: ' + realMsg);
         setLoading(false);
       }
     };
