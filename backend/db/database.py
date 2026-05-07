@@ -132,13 +132,17 @@ def save_global_chart(item_type, chart_df):
     for _, row in chart_df.iterrows():
         size_label = row.get('Size') or row.get('size_label')
         measurement_value = row.get('Value') or row.get('measurement_value')
-        if size_label is not None and measurement_value is not None:
-            cursor.execute(
-                "INSERT INTO global_size_charts (item_type, size_label, measurement_value) VALUES (?, ?, ?)",
-                (item_type, str(size_label), float(measurement_value))
-            )
+        if size_label and str(size_label).strip() and measurement_value is not None and str(measurement_value).strip() != '':
+            try:
+                cursor.execute(
+                    "INSERT INTO global_size_charts (item_type, size_label, measurement_value) VALUES (?, ?, ?)",
+                    (item_type, str(size_label), float(measurement_value))
+                )
+            except (ValueError, TypeError):
+                continue
     conn.commit()
     conn.close()
+
 
 def get_global_chart(item_type):
     conn = _get_conn()

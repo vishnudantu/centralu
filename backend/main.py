@@ -1,7 +1,8 @@
 import os
 import json
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
+from typing import Any
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import io
@@ -63,10 +64,11 @@ def get_charts():
     return {item: get_global_chart(item).to_dict(orient="records") for item in items}
 
 @app.post("/charts/{item_type}")
-def update_chart(item_type: str, data: list):
+def update_chart(item_type: str, data: Any = Body(...)):
     df = pd.DataFrame(data)
     save_global_chart(item_type, df)
     return {"status": "updated"}
+
 
 @app.get("/allowances")
 def list_allowances():

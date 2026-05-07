@@ -41,21 +41,32 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
   : "/api";
 
 
-    const api = async (endpoint, options = {}) => {
-      const url = `${API_BASE}${endpoint}`;
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
-      }
-      return res.json();
-    };
+const api = async (endpoint, options = {}) => {
+  const url = `${API_BASE}${endpoint}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+    let msg;
+    if (typeof err.detail === 'string') {
+      msg = err.detail;
+    } else if (Array.isArray(err.detail)) {
+      msg = err.detail.map(d => (typeof d === 'string' ? d : (d.msg || JSON.stringify(d)))).join(', ');
+    } else if (err.detail && typeof err.detail === 'object') {
+      msg = JSON.stringify(err.detail);
+    } else {
+      msg = `HTTP ${res.status}`;
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+};
+
 
     // Polyfill icons using Material Icons font (no @mui/icons-material CDN needed)
 const Icon = MaterialUI.Icon;
