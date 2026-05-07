@@ -719,7 +719,7 @@ const TemplatesView = ({ schools, fetchSchools }) => {
               <TableHead>
                 <TableRow>
                   <TableCell>Size Label</TableCell>
-                  <TableCell>Measurement Value (cm)</TableCell>
+                  <TableCell>Measurement Value (inches)</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -776,7 +776,7 @@ const TemplatesView = ({ schools, fetchSchools }) => {
                   <Typography variant="subtitle2" gutterBottom>{item}</Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <TextField
-                      size="small" type="number" label="Allowance (cm)"
+                      size="small" type="number" label="Allowance (inches)"
                       value={allowances[item] || 0}
                       onChange={e => handleAllowanceChange(item, e.target.value)}
                     />
