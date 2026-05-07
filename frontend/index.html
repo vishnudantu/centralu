@@ -319,11 +319,7 @@ const ProcessView = ({ schools }) => {
     return detected;
   };
 
-  const [results, setResults] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-
-   const handleFileUpload = (e) => {
+    const handleFileUpload = (e) => {
     const f = e.target.files[0];
     if (!f) return;
     setFile(f);
