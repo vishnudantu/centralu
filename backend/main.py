@@ -101,21 +101,73 @@ def edit_allowance(item_type: str, data: dict):
 
 @app.get("/template")
 def download_template():
+    # Create sample data with realistic measurements
+    sample_data = [
+        ["ENR001", "AADHVIKA SHARMA", "FEMALE", "DAY", "BLUE", "5", "A", 28, 26, 22],
+        ["ENR002", "AARIN VADLAKONDA", "MALE", "DAY", "RED", "4", "B", 26, 24, 20],
+        ["ENR003", "CHERITH CHANDRA BOYEENA", "MALE", "DAY", "GREEN", "8", "A", 32, 28, 26],
+        ["ENR004", "D SABARI VASAN", "MALE", "BOARDING", "BLUE", "6", "C", 30, 27, 25],
+        ["ENR005", "DANIEL VARGHESE SAM", "MALE", "DAY", "RED", "9", "A", 34, 30, 28],
+        ["ENR006", "KENISHA BOSE", "FEMALE", "DAY", "GREEN", "7", "B", 31, 29, 27],
+        ["ENR007", "KODE BHANU YOSHITHA", "FEMALE", "BOARDING", "BLUE", "3", "A", 24, 22, 18],
+        ["ENR008", "JAMAN YESHWIN", "MALE", "DAY", "RED", "2", "B", 22, 20, 16],
+        ["ENR009", "HREDHAAN MARAR", "MALE", "DAY", "GREEN", "10", "A", 36, 32, 30],
+        ["ENR010", "KANISHK SHARMA", "MALE", "BOARDING", "BLUE", "1", "A", 20, 18, 14],
+        ["ENR011", "AADHYA KRISHNA MUSTYALA", "FEMALE", "DAY", "RED", "5", "C", 28, 26, 22],
+        ["ENR012", "JAVIK SAI REDDY", "MALE", "DAY", "GREEN", "7", "A", 32, 28, 26],
+        ["ENR013", "KATAKAM PARTHVI SHRI", "FEMALE", "BOARDING", "BLUE", "4", "B", 26, 24, 20],
+        ["ENR014", "NISHA PATEL", "FEMALE", "DAY", "RED", "6", "A", 30, 27, 24],
+        ["ENR015", "RISHABH GUPTA", "MALE", "DAY", "GREEN", "8", "B", 34, 30, 28],
+    ]
+    
     cols = [
         "Enrollment Code", "Student Name", "Gender", "Admission Type",
         "House Colour", "Class Number", "Class Name",
         "Chest", "Waist", "Length"
     ]
-    df = pd.DataFrame(columns=cols)
+    
+    # Sheet 1: Blank template with headers
+    template_df = pd.DataFrame(columns=cols)
+    
+    # Sheet 2: Sample data
+    sample_df = pd.DataFrame(sample_data, columns=cols)
+    
+    # Sheet 3: Instructions
+    instructions = pd.DataFrame({
+        "Field": [
+            "Enrollment Code", "Student Name", "Gender", "Admission Type",
+            "House Colour", "Class Number", "Class Name", "Chest", "Waist", "Length"
+        ],
+        "Required": [
+            "Yes", "Yes", "Yes", "No", "No", "Yes", "Yes", "Yes*", "Yes*", "No"
+        ],
+        "Format / Notes": [
+            "Unique ID per student",
+            "Full name of student",
+            "MALE, FEMALE, BOY, GIRL, M, F accepted",
+            "DAY, BOARDING, etc. (optional)",
+            "House color (optional)",
+            "Grade: 1, 2, 3 ... 10, 11, 12",
+            "Section: A, B, C...",
+            "Body chest in INCHES (required for Shirts & T-Shirts)",
+            "Body waist in INCHES (required for Pants, Skirts, Shorts)",
+            "Optional reference measurement in INCHES"
+        ]
+    })
+    
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Template')
+        template_df.to_excel(writer, index=False, sheet_name='Blank_Template')
+        sample_df.to_excel(writer, index=False, sheet_name='Sample_Data')
+        instructions.to_excel(writer, index=False, sheet_name='Instructions')
+    
     output.seek(0)
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Student_Template.xlsx"}
+        headers={"Content-Disposition": "attachment; filename=Central_Uniform_Template.xlsx"}
     )
+
 
 @app.post("/process")
 async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...), mapping: str = Form(...), sheet_name: str = Form(None)):
