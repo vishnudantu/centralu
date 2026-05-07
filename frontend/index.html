@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Central Uniform Sizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@mui/material@5.15.0/umd/material-ui.production.min.js" crossorigin></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #f4f6f8; overflow: hidden; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #919eab; border-radius: 3px; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const {
+      Box, Drawer, AppBar, Toolbar, Typography, Button, IconButton, TextField,
+      Paper, Grid, Card, CardContent, Table, TableBody, TableCell, TableContainer,
+      TableHead, TableRow, Select, MenuItem, FormControl, InputLabel, Tabs, Tab,
+      Chip, Avatar, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
+      CssBaseline, ThemeProvider, createTheme, Switch, FormControlLabel, Fab, CircularProgress,
+      Snackbar, Alert, Container, Divider, List, ListItem, ListItemButton, ListItemIcon, ListItemText
+    } = MaterialUI;
+    
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+      ? "http://localhost:8000" 
+      : `http://${window.location.hostname}:8000`;
+
+    const api = async (endpoint, options = {}) => {
+      const url = `${API_BASE}${endpoint}`;
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      return res.json();
+    };
+
+    // Polyfill icons using Material Icons font (no @mui/icons-material CDN needed)
+const Icon = MaterialUI.Icon;
+const Dashboard = (props) => <Icon {...props}>dashboard</Icon>;
+const School = (props) => <Icon {...props}>school</Icon>;
+const Settings = (props) => <Icon {...props}>settings</Icon>;
+const History = (props) => <Icon {...props}>history</Icon>;
+const Upload = (props) => <Icon {...props}>upload</Icon>;
+const Download = (props) => <Icon {...props}>download</Icon>;
+const Logout = (props) => <Icon {...props}>logout</Icon>;
+const LightMode = (props) => <Icon {...props}>light_mode</Icon>;
+const DarkMode = (props) => <Icon {...props}>dark_mode</Icon>;
+const Add = (props) => <Icon {...props}>add</Icon>;
+const Delete = (props) => <Icon {...props}>delete</Icon>;
+const Edit = (props) => <Icon {...props}>edit</Icon>;
+const ArrowBack = (props) => <Icon {...props}>arrow_back</Icon>;
+const ArrowForward = (props) => <Icon {...props}>arrow_forward</Icon>;
+const CheckCircle = (props) => <Icon {...props}>check_circle</Icon>;
+const ErrorIcon = (props) => <Icon {...props}>error</Icon>;
+const Menu = (props) => <Icon {...props}>menu</Icon>;
+const ChevronRight = (props) => <Icon {...props}>chevron_right</Icon>;
+const Close = (props) => <Icon {...props}>close</Icon>;
+const Analytics = (props) => <Icon {...props}>analytics</Icon>;
+
+
+    // ============== THEME ==============
+    const getTheme = (mode) => createTheme({
+      palette: {
+        mode,
+        primary: { main: '#2065d1' },
+        background: {
+          default: mode === 'dark' ? '#161c24' : '#f4f6f8',
+          paper: mode === 'dark' ? '#212b36' : '#ffffff',
+        },
+      },
+      typography: { fontFamily: 'Inter, sans-serif' },
+      shape: { borderRadius: 12 },
+    });
+
+    // ============== LOGIN PAGE ==============
+    const LoginScreen = ({ onLogin }) => {
+      const [creds, setCreds] = React.useState({ username: '', password: '' });
+      const [error, setError] = React.useState('');
+      const [loading, setLoading] = React.useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+          const res = await api('/login', {
+            method: 'POST',
+            body: JSON.stringify(creds),
+          });
+          if (res.status === 'success') {
+            localStorage.setItem('cuni_token', res.token);
+            onLogin();
+          }
+        } catch (err) {
+          setError(err.message || 'Invalid credentials');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <Box sx={{ 
+          height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        }}>
+          <Card sx={{ width: 400, p: 4, borderRadius: 4, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <CardContent>
+              <Box sx={{ textAlign: 'center', mb: 3 }}>
+                <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: 'primary.main' }}>
+                  <School sx={{ fontSize: 32 }} />
+                </Avatar>
+                <Typography variant="h4" fontWeight="bold" gutterBottom>Central Uniform</Typography>
+                <Typography variant="body2" color="text.secondary">Sizing Intelligence Platform</Typography>
+              </Box>
+              <form onSubmit={handleSubmit}>
+                <TextField
+                  fullWidth label="Username" margin="normal" variant="outlined"
+                  value={creds.username} onChange={e => setCreds({...creds, username: e.target.value})}
+                  autoFocus
+                />
+                <TextField
+                  fullWidth label="Password" type="password" margin="normal" variant="outlined"
+                  value={creds.password} onChange={e => setCreds({...creds, password: e.target.value})}
+                />
+                {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
+                <Button
+                  fullWidth variant="contained" size="large" type="submit"
+                  sx={{ mt: 3, py: 1.5, borderRadius: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Sign In'}
+                </Button>
+              </form>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block', textAlign: 'center' }}>
+                Default: admin / admin123
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+      );
+    };
+
+    // ============== SIDEBAR ==============
+    const Sidebar = ({ view, setView, darkMode, setDarkMode }) => {
+      const menu = [
+        { key: 'dashboard', label: 'Dashboard', icon: <Dashboard /> },
+        { key: 'process', label: 'Process Sizes', icon: <Upload /> },
+        { key: 'templates', label: 'Configuration', icon: <Settings /> },
+        { key: 'history', label: 'History', icon: <History /> },
+      ];
+
+      return (
+        <Box sx={{ 
+          width: 260, height: '100vh', bgcolor: 'background.paper', 
+          borderRight: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column'
+        }}>
+          <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Avatar sx={{ bgcolor: 'primary.main' }}><School /></Avatar>
+            <Typography variant="h6" fontWeight="bold">Central Uniform</Typography>
+          </Box>
+          <List sx={{ flex: 1 }}>
+            {menu.map(item => (
+              <ListItem key={item.key} disablePadding>
+                <ListItemButton
+                  selected={view === item.key}
+                  onClick={() => setView(item.key)}
+                  sx={{ 
+                    mx: 1, borderRadius: 2, mb: 0.5,
+                    '&.Mui-selected': { bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }
+                  }}
+                >
+                  <ListItemIcon sx={{ color: view === item.key ? 'white' : 'inherit', minWidth: 36 }}>
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText primary={item.label} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+          <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <FormControlLabel
+              control={<Switch checked={darkMode} onChange={() => setDarkMode(!darkMode)} />}
+              label={<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><DarkMode fontSize="small"/> Dark</Box>}
+            />
+          </Box>
+        </Box>
+      );
+    };
+
+    // ============== DASHBOARD ==============
+    const DashboardView = ({ schools, onProcess }) => {
+      return (
+        <Box className="fade-in">
+          <Typography variant="h4" fontWeight="bold" gutterBottom>Dashboard</Typography>
+          <Typography variant="body1" color="text.secondary" gutterBottom>Overview of your uniform sizing operations.</Typography>
+          
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent sx={{ p: 3 }}>
+                  <Typography variant="overline" color="text.secondary">Active Schools</Typography>
+                  <Typography variant="h3" fontWeight="bold" color="primary.main">{schools.length}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent sx={{ p: 3 }}>
+                  <Typography variant="overline" color="text.secondary">Files Processed</Typography>
+                  <Typography variant="h3" fontWeight="bold" color="success.main">0</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent sx={{ p: 3 }}>
+                  <Typography variant="overline" color="text.secondary">Status</Typography>
+                  <Typography variant="h3" fontWeight="bold" color="info.main">Ready</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          <Card sx={{ mt: 4, p: 4, textAlign: 'center', bgcolor: 'primary.main', color: 'white' }}>
+            <Typography variant="h5" fontWeight="bold" gutterBottom>Ready for the next batch?</Typography>
+            <Typography variant="body1" sx={{ mb: 3, opacity: 0.9 }}>
+              Launch the sizing engine to process student measurements and generate vendor-ready Excel output.
+            </Typography>
+            <Button 
+              variant="contained" size="large" 
+              onClick={() => onProcess()}
+              sx={{ bgcolor: 'white', color: 'primary.main', '&:hover': { bgcolor: '#f0f0f0' }, px: 4, py: 1.5 }}
+            >
+              Launch Engine
+            </Button>
+          </Card>
+        </Box>
+      );
+    };
+
+// ============== PROCESS VIEW ==============
+const ProcessView = ({ schools }) => {
+  const [step, setStep] = React.useState(1);
+  const [selectedSchool, setSelectedSchool] = React.useState('');
+  const [file, setFile] = React.useState(null);
+  const [columns, setColumns] = React.useState([]);
+  const [mapping, setMapping] = React.useState({
+    enr: '', name: '', class_num: '', class_name: '', 
+    gender: '', adm_type: '', house: '', chest: '', waist: '', length: ''
+  });
+
+  const detectMapping = (headers) => {
+    const detected = { enr: '', name: '', class_num: '', class_name: '', gender: '', adm_type: '', house: '', chest: '', waist: '', length: '' };
+    headers.forEach(raw => {
+      const c = String(raw).toLowerCase().trim();
+      if (c === 'enrollment code' || c === 'enrolment code') detected.enr = raw;
+      else if (c === 'student name') detected.name = raw;
+      else if (c === 'class number') detected.class_num = raw;
+      else if (c === 'class name') detected.class_name = raw;
+      else if (c === 'gender' || c === 'sex') detected.gender = raw;
+      else if (c === 'admission type') detected.adm_type = raw;
+      else if (c === 'house colour' || c === 'house color') detected.house = raw;
+      else if (c === 'chest' || c === 'body chest') detected.chest = raw;
+      else if (c === 'waist' || c === 'body waist') detected.waist = raw;
+      else if (c === 'length') detected.length = raw;
+      else if (!detected.enr && (c.includes('enroll') || c.includes('roll no') || c.includes('admission no') || c.includes('student id'))) detected.enr = raw;
+      else if (!detected.name && c.includes('name') && !c.includes('class')) detected.name = raw;
+      else if (!detected.class_num && c.includes('class') && (c.includes('no') || c.includes('num') || c.includes('grade'))) detected.class_num = raw;
+      else if (!detected.class_name && (c.includes('section') || (c.includes('class') && c.includes('name')))) detected.class_name = raw;
+      else if (!detected.gender && (c.includes('gender') || c.includes('sex'))) detected.gender = raw;
+      else if (!detected.adm_type && (c.includes('admission') || c.includes('type'))) detected.adm_type = raw;
+      else if (!detected.house && (c.includes('house') || c.includes('colour') || c.includes('color'))) detected.house = raw;
+      else if (!detected.chest && c.includes('chest')) detected.chest = raw;
+      else if (!detected.waist && c.includes('waist')) detected.waist = raw;
+      else if (!detected.length && c.includes('length')) detected.length = raw;
+    });
+    return detected;
+  };
+
+  const [results, setResults] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const handleFileUpload = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+    setLoading(true);
+    setError('');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const headers = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })[0] || [];
+        const headerStrings = headers.map(String);
+        setColumns(headerStrings);
+        const detected = detectMapping(headerStrings);
+        setMapping(detected);
+        setStep(3);
+
+      } catch (err) {
+        setError('Failed to parse Excel. Ensure it is a valid .xlsx file.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.onerror = () => { setError('Failed to read file'); setLoading(false); };
+    reader.readAsArrayBuffer(f);
+  };
+
+  const handleProcess = async () => {
+    setLoading(true);
+    setError('');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('school_id', selectedSchool);
+    formData.append('mapping', JSON.stringify(mapping));
+    
+    try {
+      const res = await fetch(`${API_BASE}/process`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Processing failed' }));
+        throw new Error(err.detail);
+      }
+      const data = await res.json();
+      setResults(data.data);
+      setStep(4);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mappingFields = [
+    { key: 'enr', label: 'Enrollment Code' },
+    { key: 'name', label: 'Student Name' },
+    { key: 'class_num', label: 'Class Number' },
+    { key: 'class_name', label: 'Class Name' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'adm_type', label: 'Admission Type' },
+    { key: 'house', label: 'House Colour' },
+    { key: 'chest', label: 'Body Chest' },
+    { key: 'waist', label: 'Body Waist' },
+    { key: 'length', label: 'Length (Optional)' },
+  ];
+
+
+  const stepLabels = ['Select School', 'Upload File', 'Map Columns', 'Results'];
+
+  return (
+    <Box className="fade-in">
+      <Typography variant="h4" fontWeight="bold" gutterBottom>Process Sizes</Typography>
+      
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, gap: 1 }}>
+        {[1,2,3,4].map(s => (
+          <React.Fragment key={s}>
+            <Box sx={{
+              width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              bgcolor: step >= s ? 'primary.main' : 'grey.300',
+              color: step >= s ? 'white' : 'grey.600',
+              fontWeight: 'bold', fontSize: 14
+            }}>
+              {s}
+            </Box>
+            <Typography variant="caption" sx={{ color: step >= s ? 'primary.main' : 'text.disabled', fontWeight: 500 }}>
+              {stepLabels[s-1]}
+            </Typography>
+            {s < 4 && <Box sx={{ width: 40, height: 2, bgcolor: step > s ? 'primary.main' : 'grey.300', ml: 1, mr: 1 }} />}
+          </React.Fragment>
+        ))}
+      </Box>
+
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+
+      {step === 1 && (
+        <Card sx={{ p: 4, maxWidth: 500 }}>
+          <Typography variant="h6" gutterBottom>Select School</Typography>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>School</InputLabel>
+            <Select value={selectedSchool} label="School" onChange={e => setSelectedSchool(e.target.value)}>
+              <MenuItem value=""><em>Select a school...</em></MenuItem>
+              {schools.map(s => <MenuItem key={s.id} value={s.id}>{s.name} ({s.academic_year})</MenuItem>)}
+            </Select>
+          </FormControl>
+          <Button variant="contained" sx={{ mt: 3 }} disabled={!selectedSchool} onClick={() => setStep(2)}>
+            Next: Upload Sheet
+          </Button>
+          {schools.length === 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>No schools configured. Go to Configuration first.</Alert>
+          )}
+        </Card>
+      )}
+
+      {step === 2 && (
+        <Card sx={{ p: 4, maxWidth: 500 }}>
+          <Typography variant="h6" gutterBottom>Upload Measurements</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Upload an Excel file with student measurements. We will detect the columns automatically.
+          </Typography>
+          <Button variant="outlined" component="label" fullWidth sx={{ py: 3, border: '2px dashed', borderColor: 'grey.400' }}>
+            <Upload sx={{ mr: 1 }} /> Choose Excel File
+            <input type="file" accept=".xlsx,.xls" hidden onChange={handleFileUpload} />
+          </Button>
+          {loading && <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /> Reading file...</Box>}
+          <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+            <Button onClick={() => setStep(1)}>Back</Button>
+            <Button variant="outlined" onClick={() => window.open(`${API_BASE}/template`, '_blank')}>
+              Download Template
+            </Button>
+          </Box>
+        </Card>
+      )}
+
+      {step === 3 && (
+        <Card sx={{ p: 4 }}>
+          <Typography variant="h6" gutterBottom>Map Data Columns</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Detected {columns.length} columns. Match each field to the correct column from your file.
+          </Typography>
+          <Grid container spacing={3}>
+            {mappingFields.map(field => (
+              <Grid item xs={12} md={4} key={field.key}>
+                <FormControl fullWidth>
+                  <InputLabel>{field.label}</InputLabel>
+                  <Select 
+                    value={mapping[field.key]} 
+                    label={field.label}
+                    onChange={e => setMapping({...mapping, [field.key]: e.target.value})}
+                  >
+                    <MenuItem value=""><em>Select column...</em></MenuItem>
+                    {columns.map((col, idx) => (
+                      <MenuItem key={idx} value={col}>{col}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            ))}
+          </Grid>
+          <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
+            <Button onClick={() => setStep(2)}>Back</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleProcess} 
+              disabled={loading || Object.values(mapping).some(v => !v)}
+            >
+              {loading ? <CircularProgress size={24} /> : 'Run Sizing Engine'}
+            </Button>
+          </Box>
+        </Card>
+      )}
+
+      {step === 4 && (
+        <Box>
+          <Alert severity="success" sx={{ mb: 3 }}>Processing complete!</Alert>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Results</Typography>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button variant="outlined" onClick={() => { 
+                    setStep(1); setResults(null); setFile(null); setColumns([]); 
+                    setMapping({enr:'',name:'',class_num:'',class_name:'',gender:'',adm_type:'',house:'',chest:'',waist:''}); 
+                    setSelectedSchool('');
+                  }}>New Batch</Button>
+                  <Button variant="contained" startIcon={<Download />} onClick={() => window.location.href = `${API_BASE}/download`}>
+                    Download Excel
+                  </Button>
+                </Box>
+              </Box>
+              <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Student</TableCell>
+                      <TableCell>Shirt</TableCell>
+                      <TableCell>Bottom</TableCell>
+                      <TableCell>Sports Tee</TableCell>
+                      <TableCell>School Tee</TableCell>
+                      <TableCell>Sports Pant</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {results && results.map((r, i) => (
+                      <TableRow key={i} hover>
+                        <TableCell>{r['Student Name']}</TableCell>
+                        <TableCell>{r['Shirt Size']}</TableCell>
+                        <TableCell>{r['Bottom Type']} ({r['Bottom Size']})</TableCell>
+                        <TableCell>{r['Sports T-Shirt']}</TableCell>
+                        <TableCell>{r['School T-Shirt']}</TableCell>
+                        <TableCell>{r['Sports Track Pant']}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            size="small" 
+                            icon={r.Status === 'OK' ? <CheckCircle fontSize="small" /> : <ErrorIcon fontSize="small" />}
+                            label={r.Status} 
+                            color={r.Status === 'OK' ? 'success' : 'error'} 
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// ============== TEMPLATES VIEW ==============
+const TemplatesView = ({ schools, fetchSchools }) => {
+  const [tab, setTab] = React.useState(0);
+  const [snackbar, setSnackbar] = React.useState({ open: false, message: '', severity: 'success' });
+  
+  const [newSchool, setNewSchool] = React.useState({ name: '', year: '' });
+  
+  const [charts, setCharts] = React.useState({});
+  const [selectedChart, setSelectedChart] = React.useState('Shirt');
+  const [chartData, setChartData] = React.useState([]);
+  
+  const [allowances, setAllowances] = React.useState({});
+
+  React.useEffect(() => {
+    loadCharts();
+    loadAllowances();
+  }, []);
+
+  const showMsg = (msg, sev = 'success') => setSnackbar({ open: true, message: msg, severity: sev });
+
+  const loadCharts = async () => {
+    try {
+      const data = await api('/charts');
+      setCharts(data);
+      setChartData(data[selectedChart] ? [...data[selectedChart]] : []);
+    } catch (e) { showMsg('Failed to load charts', 'error'); }
+  };
+
+  const loadAllowances = async () => {
+    try {
+      const data = await api('/allowances');
+      setAllowances(data);
+    } catch (e) { showMsg('Failed to load allowances', 'error'); }
+  };
+
+  const handleAddSchool = async () => {
+    if (!newSchool.name) return;
+    try {
+      await api('/schools', { method: 'POST', body: JSON.stringify(newSchool) });
+      showMsg('School added');
+      setNewSchool({ name: '', year: '' });
+      fetchSchools();
+    } catch (e) { showMsg(e.message, 'error'); }
+  };
+
+  const handleDeleteSchool = async (id) => {
+    if (!confirm('Delete this school?')) return;
+    try {
+      await api(`/schools/${id}`, { method: 'DELETE' });
+      showMsg('School deleted');
+      fetchSchools();
+    } catch (e) { showMsg(e.message, 'error'); }
+  };
+
+  const handleSaveChart = async () => {
+    try {
+      await api(`/charts/${selectedChart}`, { method: 'POST', body: JSON.stringify(chartData) });
+      showMsg(`${selectedChart} chart saved`);
+      loadCharts();
+    } catch (e) { showMsg(e.message, 'error'); }
+  };
+
+  const handleChartTypeChange = (type) => {
+    setSelectedChart(type);
+    setChartData(charts[type] ? [...charts[type]] : []);
+  };
+
+  const updateChartRow = (index, field, value) => {
+    const updated = [...chartData];
+    updated[index] = { ...updated[index], [field]: value };
+    setChartData(updated);
+  };
+
+  const addChartRow = () => {
+    setChartData([...chartData, { Size: '', Value: '' }]);
+  };
+
+  const removeChartRow = (index) => {
+    setChartData(chartData.filter((_, i) => i !== index));
+  };
+
+  const handleAllowanceChange = (item, value) => {
+    setAllowances({ ...allowances, [item]: parseFloat(value) || 0 });
+  };
+
+  const saveAllowance = async (item) => {
+    try {
+      await api(`/allowances/${item}`, { method: 'POST', body: JSON.stringify({ value: allowances[item] }) });
+      showMsg(`${item} allowance updated`);
+    } catch (e) { showMsg(e.message, 'error'); }
+  };
+
+    const chartTypes = ["Shirt", "Pant", "Skirt", "Shorts", "Sports T-Shirt", "School T-Shirt", "Sports Track Pant"];
+
+  return (
+    <Box className="fade-in">
+      <Typography variant="h4" fontWeight="bold" gutterBottom>Configuration</Typography>
+      
+      <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Schools" />
+        <Tab label="Master Charts" />
+        <Tab label="Allowances" />
+      </Tabs>
+
+      {tab === 0 && (
+        <Card sx={{ p: 4 }}>
+          <Typography variant="h6" gutterBottom>School Management</Typography>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={5}>
+              <TextField 
+                fullWidth label="School Name" 
+                value={newSchool.name} 
+                onChange={e => setNewSchool({...newSchool, name: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField 
+                fullWidth label="Academic Year" 
+                value={newSchool.year} 
+                onChange={e => setNewSchool({...newSchool, year: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Button variant="contained" fullWidth sx={{ height: '100%' }} onClick={handleAddSchool} startIcon={<Add />}>
+                Add School
+              </Button>
+            </Grid>
+          </Grid>
+          
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Year</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {schools.map(s => (
+                  <TableRow key={s.id} hover>
+                    <TableCell>{s.id}</TableCell>
+                    <TableCell>{s.name}</TableCell>
+                    <TableCell>{s.academic_year}</TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" color="error" onClick={() => handleDeleteSchool(s.id)}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {schools.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      No schools configured yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
+      )}
+
+      {tab === 1 && (
+        <Card sx={{ p: 4 }}>
+          <Typography variant="h6" gutterBottom>Global Master Charts</Typography>
+          <FormControl sx={{ mb: 3, minWidth: 200 }}>
+            <InputLabel>Garment Type</InputLabel>
+            <Select value={selectedChart} label="Garment Type" onChange={e => handleChartTypeChange(e.target.value)}>
+              {chartTypes.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+            </Select>
+          </FormControl>
+
+          <TableContainer component={Paper} sx={{ mb: 3 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Size Label</TableCell>
+                  <TableCell>Measurement Value (cm)</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {chartData.map((row, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <TextField 
+                        size="small" value={row.Size || ''} 
+                        onChange={e => updateChartRow(idx, 'Size', e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField 
+                        size="small" type="number" value={row.Value || ''} 
+                        onChange={e => updateChartRow(idx, 'Value', parseFloat(e.target.value))}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" color="error" onClick={() => removeChartRow(idx)}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {chartData.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                      No sizes configured. Add rows below.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="outlined" onClick={addChartRow} startIcon={<Add />}>Add Size Row</Button>
+            <Button variant="contained" onClick={handleSaveChart}>Save Chart</Button>
+          </Box>
+        </Card>
+      )}
+
+      {tab === 2 && (
+        <Card sx={{ p: 4 }}>
+          <Typography variant="h6" gutterBottom>Measurement Allowances</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Allowances added to body measurements to calculate final garment sizes.
+          </Typography>
+          <Grid container spacing={3}>
+            {chartTypes.map(item => (
+              <Grid item xs={12} md={4} key={item}>
+                <Card variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>{item}</Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      size="small" type="number" label="Allowance (cm)"
+                      value={allowances[item] || 0}
+                      onChange={e => handleAllowanceChange(item, e.target.value)}
+                    />
+                    <Button variant="contained" size="small" onClick={() => saveAllowance(item)}>Save</Button>
+                  </Box>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Card>
+      )}
+
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={4000} 
+        onClose={() => setSnackbar({...snackbar, open: false})}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({...snackbar, open: false})}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+// ============== HISTORY VIEW ==============
+const HistoryView = () => {
+  const [records, setRecords] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const loadHistory = async () => {
+    try {
+      const data = await api('/history');
+      setRecords(data);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Box className="fade-in">
+      <Typography variant="h4" fontWeight="bold" gutterBottom>Processing History</Typography>
+      <Card>
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>School</TableCell>
+                <TableCell>Processed At</TableCell>
+                <TableCell align="center">Total</TableCell>
+                <TableCell align="center">Success</TableCell>
+                <TableCell align="center">Errors</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
+              ) : records.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No processing history found.
+                  </TableCell>
+                </TableRow>
+              ) : records.map((r, i) => (
+                <TableRow key={i} hover>
+                  <TableCell>{r.school_name}</TableCell>
+                  <TableCell>{new Date(r.processed_at).toLocaleString()}</TableCell>
+                  <TableCell align="center">{r.total_count}</TableCell>
+                  <TableCell align="center" sx={{ color: 'success.main' }}>{r.success_count}</TableCell>
+                  <TableCell align="center" sx={{ color: r.error_count > 0 ? 'error.main' : 'inherit' }}>{r.error_count}</TableCell>
+                  <TableCell>
+                    <Chip 
+                      size="small" 
+                      label={r.error_count === 0 ? 'Perfect' : r.error_count < r.total_count ? 'Partial' : 'Failed'}
+                      color={r.error_count === 0 ? 'success' : r.error_count < r.total_count ? 'warning' : 'error'}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+    </Box>
+  );
+};
+// ============== APP SHELL ==============
+const App = () => {
+  const [darkMode, setDarkMode] = React.useState(false);
+  const [auth, setAuth] = React.useState(!!localStorage.getItem('cuni_token'));
+  const [view, setView] = React.useState('dashboard');
+  const [schools, setSchools] = React.useState([]);
+
+  const theme = React.useMemo(() => getTheme(darkMode ? 'dark' : 'light'), [darkMode]);
+
+  const fetchSchools = async () => {
+    try {
+      const data = await api('/schools');
+      setSchools(data);
+    } catch (e) { console.error('Failed to fetch schools', e); }
+  };
+
+  React.useEffect(() => {
+    if (auth) fetchSchools();
+  }, [auth]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('cuni_token');
+    setAuth(false);
+  };
+
+  if (!auth) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LoginScreen onLogin={() => setAuth(true)} />
+      </ThemeProvider>
+    );
+  }
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: 'flex', height: '100vh' }}>
+        <Sidebar view={view} setView={setView} darkMode={darkMode} setDarkMode={setDarkMode} />
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <AppBar position="static" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Toolbar sx={{ justifyContent: 'flex-end' }}>
+              <Button 
+                color="inherit" 
+                startIcon={<Logout />} 
+                onClick={handleLogout}
+                sx={{ textTransform: 'none' }}
+              >
+                Logout
+              </Button>
+            </Toolbar>
+          </AppBar>
+          <Box sx={{ flex: 1, overflow: 'auto', p: 4, bgcolor: 'background.default' }}>
+            {view === 'dashboard' && <DashboardView schools={schools} onProcess={() => setView('process')} />}
+            {view === 'process' && <ProcessView schools={schools} />}
+            {view === 'templates' && <TemplatesView schools={schools} fetchSchools={fetchSchools} />}
+            {view === 'history' && <HistoryView />}
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+  </script>
+</body>
+</html>
