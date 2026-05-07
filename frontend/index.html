@@ -279,9 +279,13 @@ const ProcessView = ({ schools }) => {
   const [step, setStep] = React.useState(1);
   const [selectedSchool, setSelectedSchool] = React.useState('');
   const [file, setFile] = React.useState(null);
+    const [columns, setColumns] = React.useState([]);
+  const [results, setResults] = React.useState(null);
   const [workbook, setWorkbook] = React.useState(null);
   const [sheetNames, setSheetNames] = React.useState([]);
   const [selectedSheet, setSelectedSheet] = React.useState('');
+    const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
   const [mapping, setMapping] = React.useState({
     enr: '', name: '', class_num: '', class_name: '', 
     gender: '', adm_type: '', house: '', chest: '', waist: '', length: ''
