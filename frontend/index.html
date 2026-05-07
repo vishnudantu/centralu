@@ -180,7 +180,9 @@ const Analytics = (props) => <Icon {...props}>analytics</Icon>;
         { key: 'dashboard', label: 'Dashboard', icon: <Dashboard /> },
         { key: 'process', label: 'Process Sizes', icon: <Upload /> },
         { key: 'templates', label: 'Configuration', icon: <Settings /> },
-        { key: 'history', label: 'History', icon: <History /> },
+          { key: 'students', label: 'Students', icon: <School /> },
+  { key: 'history', label: 'History', icon: <History /> },
+
       ];
 
       return (
@@ -882,6 +884,187 @@ const HistoryView = () => {
     </Box>
   );
 };
+// ============== STUDENTS VIEW ==============
+const StudentsView = ({ schools }) => {
+  const [selectedSchool, setSelectedSchool] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [students, setStudents] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [editDialog, setEditDialog] = React.useState(false);
+  const [editStudent, setEditStudent] = React.useState(null);
+  const [snackbar, setSnackbar] = React.useState({ open: false, message: '', severity: 'success' });
+
+  const showMsg = (msg, sev = 'success') => setSnackbar({ open: true, message: msg, severity: sev });
+
+  const loadStudents = async () => {
+    if (!selectedSchool) return;
+    setLoading(true);
+    try {
+      const data = await api(`/students?school_id=${selectedSchool}&search=${encodeURIComponent(search || '')}`);
+      setStudents(data);
+    } catch (e) {
+      showMsg(e.message || 'Failed to load students', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadStudents();
+  }, [selectedSchool, search]);
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this student?')) return;
+    try {
+      await api(`/students/${id}?school_id=${selectedSchool}`, { method: 'DELETE' });
+      showMsg('Student deleted');
+      loadStudents();
+    } catch (e) {
+      showMsg(e.message || 'Delete failed', 'error');
+    }
+  };
+
+  const handleEditOpen = (s) => {
+    setEditStudent({ ...s });
+    setEditDialog(true);
+  };
+
+  const handleEditSave = async () => {
+    try {
+      await api(`/students/${editStudent.id}?school_id=${selectedSchool}`, {
+        method: 'PUT',
+        body: JSON.stringify(editStudent)
+      });
+      showMsg('Student updated and sizes recalculated');
+      setEditDialog(false);
+      loadStudents();
+    } catch (e) {
+      showMsg(e.message || 'Update failed', 'error');
+    }
+  };
+
+  return (
+    <Box className="fade-in">
+      <Typography variant="h4" fontWeight="bold" gutterBottom>Students</Typography>
+      <Typography variant="body2" color="text.secondary" gutterBottom>
+        View, search, and edit student measurements. Data is isolated per school.
+      </Typography>
+
+      <Card sx={{ p: 3, mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={5}>
+            <FormControl fullWidth>
+              <InputLabel>School</InputLabel>
+              <Select value={selectedSchool} label="School" onChange={e => setSelectedSchool(e.target.value)}>
+                <MenuItem value=""><em>Select school...</em></MenuItem>
+                {schools.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <TextField
+              fullWidth
+              placeholder="Search by name, enrollment code, or class..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              InputProps={{ startAdornment: <Icon sx={{ mr: 1 }}>search</Icon> }}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button variant="contained" fullWidth onClick={loadStudents} disabled={!selectedSchool}>
+              Search
+            </Button>
+          </Grid>
+        </Grid>
+      </Card>
+
+      {selectedSchool && (
+        <Card>
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Enrollment</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Class</TableCell>
+                  <TableCell>Gender</TableCell>
+                  <TableCell>Shirt</TableCell>
+                  <TableCell>Bottom</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
+                ) : students.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      No students found. Upload an Excel file in Process Sizes to populate.
+                    </TableCell>
+                  </TableRow>
+                ) : students.map(s => (
+                  <TableRow key={s.id} hover>
+                    <TableCell>{s.enrollment_code}</TableCell>
+                    <TableCell>{s.student_name}</TableCell>
+                    <TableCell>{s.class_name} ({s.class_number})</TableCell>
+                    <TableCell>{s.gender}</TableCell>
+                    <TableCell>{s.shirt_size}</TableCell>
+                    <TableCell>{s.bottom_type} {s.bottom_size}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={s.status} color={s.status === 'OK' ? 'success' : 'error'} />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" onClick={() => handleEditOpen(s)}><Edit fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(s.id)}><Delete fontSize="small" /></IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
+      )}
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialog} onClose={() => setEditDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Student</DialogTitle>
+        <DialogContent>
+          {editStudent && (
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Student Name" value={editStudent.student_name || ''} onChange={e => setEditStudent({...editStudent, student_name: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Enrollment Code" value={editStudent.enrollment_code || ''} onChange={e => setEditStudent({...editStudent, enrollment_code: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Class Number" value={editStudent.class_number || ''} onChange={e => setEditStudent({...editStudent, class_number: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Class Name" value={editStudent.class_name || ''} onChange={e => setEditStudent({...editStudent, class_name: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Gender" value={editStudent.gender || ''} onChange={e => setEditStudent({...editStudent, gender: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="House Colour" value={editStudent.house_colour || ''} onChange={e => setEditStudent({...editStudent, house_colour: e.target.value})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Chest (inches)" type="number" value={editStudent.chest || ''} onChange={e => setEditStudent({...editStudent, chest: parseFloat(e.target.value) || null})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Waist (inches)" type="number" value={editStudent.waist || ''} onChange={e => setEditStudent({...editStudent, waist: parseFloat(e.target.value) || null})} /></Grid>
+              <Grid item xs={12} md={4}><TextField fullWidth label="Length (inches)" type="number" value={editStudent.length || ''} onChange={e => setEditStudent({...editStudent, length: parseFloat(e.target.value) || null})} /></Grid>
+            </Grid>
+          )}
+          <Alert severity="info" sx={{ mt: 2 }}>Changing Chest or Waist will automatically recalculate all garment sizes when saved.</Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleEditSave}>Save & Recalculate</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({...snackbar, open: false})}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({...snackbar, open: false})}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
 // ============== APP SHELL ==============
 const App = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -938,7 +1121,9 @@ const App = () => {
             {view === 'dashboard' && <DashboardView schools={schools} onProcess={() => setView('process')} />}
             {view === 'process' && <ProcessView schools={schools} />}
             {view === 'templates' && <TemplatesView schools={schools} fetchSchools={fetchSchools} />}
+            {view === 'students' && <StudentsView schools={schools} />}
             {view === 'history' && <HistoryView />}
+
           </Box>
         </Box>
       </Box>
