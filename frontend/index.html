@@ -579,7 +579,8 @@ const ProcessView = ({ schools }) => {
                             size="small" 
                             icon={r.Status === 'OK' ? <CheckCircle fontSize="small" /> : <ErrorIcon fontSize="small" />}
                             label={r.Status} 
-                            color={r.Status === 'OK' ? 'success' : 'error'} 
+                            color={r.Status === 'OK' ? 'success' : r.Status === 'Partial' ? 'warning' : 'error'} 
+
                           />
                         </TableCell>
                       </TableRow>
@@ -1055,7 +1056,7 @@ const StudentsView = ({ schools }) => {
                     <TableCell>{s.shirt_size}</TableCell>
                     <TableCell>{s.bottom_type} {s.bottom_size}</TableCell>
                     <TableCell>
-                      <Chip size="small" label={s.status} color={s.status === 'OK' ? 'success' : 'error'} />
+                      <Chip size="small" label={s.status} color={s.status === 'OK' ? 'success' : s.status === 'Partial' ? 'warning' : 'error'} />
                     </TableCell>
                     <TableCell align="right">
                       <IconButton size="small" onClick={() => handleEditOpen(s)}><Edit fontSize="small" /></IconButton>

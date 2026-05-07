@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
 from typing import Any
@@ -14,10 +15,12 @@ from db.database import (
     init_db, get_all_schools, get_global_chart, save_school,
     update_school, delete_school, save_global_chart, verify_user,
     get_allowance, update_allowance, add_history, get_history,
-    get_school_by_id, get_all_allowances
+    get_school_by_id, get_all_allowances,
+    upsert_student, get_students_by_school, get_student_by_id,
+    update_student_data, delete_student
 )
 
-app = FastAPI(title="Central Uniform Sizer API", version="2.0.0")
+app = FastAPI(title="Central Uniform Sizer API", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +33,20 @@ init_db()
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+
+def clean_val(v):
+    if pd.isna(v):
+        return None
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    return v
+
+def sanitize_records(records):
+    for rec in records:
+        for k, v in rec.items():
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                rec[k] = None
+    return records
 
 @app.post("/login")
 def login(data: dict):
@@ -69,7 +86,6 @@ def update_chart(item_type: str, data: Any = Body(...)):
     save_global_chart(item_type, df)
     return {"status": "updated"}
 
-
 @app.get("/allowances")
 def list_allowances():
     df = get_all_allowances()
@@ -90,7 +106,6 @@ def download_template():
         "House Colour", "Class Number", "Class Name",
         "Chest", "Waist", "Length"
     ]
-
     df = pd.DataFrame(columns=cols)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -103,7 +118,7 @@ def download_template():
     )
 
 @app.post("/process")
-async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...), mapping: str = Form(...)):
+async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...), mapping: str = Form(...), sheet_name: str = Form(None)):
     try:
         mapping = json.loads(mapping)
     except json.JSONDecodeError:
@@ -121,7 +136,10 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
         raise HTTPException(status_code=400, detail="Empty file")
 
     try:
-        df = pd.read_excel(io.BytesIO(contents))
+        if sheet_name:
+            df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet_name)
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Cannot read Excel: {str(e)}")
 
@@ -133,11 +151,24 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
     results = []
     for _, row in df.iterrows():
         try:
-            g_chest = calculate_garment_measure(row[mapping["chest"]], get_allowance("Shirt"))
-            shirt_size, s_err = match_size(g_chest, get_global_chart("Shirt"), 'Value')
+            chest_raw = clean_val(row[mapping["chest"]])
+            waist_raw = clean_val(row[mapping["waist"]])
+            
+            has_chest = chest_raw is not None
+            has_waist = waist_raw is not None
 
-            grade_val = str(row[mapping["class_num"]])
-            gender_val = str(row[mapping["gender"]]).upper().strip()
+            # Shirt
+            if has_chest:
+                g_chest = calculate_garment_measure(chest_raw, get_allowance("Shirt"))
+                shirt_size, s_err = match_size(g_chest, get_global_chart("Shirt"), 'Value')
+                if not shirt_size:
+                    shirt_size = s_err if s_err else ""
+            else:
+                shirt_size = ""
+
+            # Determine bottom type from gender/class
+            grade_val = str(row[mapping["class_num"]]) if not pd.isna(row[mapping["class_num"]]) else ""
+            gender_val = str(row[mapping["gender"]]).upper().strip() if not pd.isna(row[mapping["gender"]]) else ""
 
             if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
                 bottom_type, target_chart = "Skirt", get_global_chart("Skirt")
@@ -147,53 +178,108 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
             else:
                 bottom_type, target_chart = "Shorts", get_global_chart("Shorts")
 
-            g_waist = calculate_garment_measure(row[mapping["waist"]], get_allowance(bottom_type))
-            bottom_size, b_err = match_size(g_waist, target_chart, 'Value')
+            # Bottom
+            if has_waist:
+                g_waist = calculate_garment_measure(waist_raw, get_allowance(bottom_type))
+                bottom_size, b_err = match_size(g_waist, target_chart, 'Value')
+                if not bottom_size:
+                    bottom_size = b_err if b_err else ""
+            else:
+                bottom_type = ""
+                bottom_size = ""
 
-            sports_chest = calculate_garment_measure(row[mapping["chest"]], get_allowance("Sports T-Shirt"))
-            sports_t_size, st_err = match_size(sports_chest, get_global_chart("Sports T-Shirt"), 'Value')
+            # Sports T-Shirt
+            if has_chest:
+                sports_chest = calculate_garment_measure(chest_raw, get_allowance("Sports T-Shirt"))
+                sports_t_size, st_err = match_size(sports_chest, get_global_chart("Sports T-Shirt"), 'Value')
+                if not sports_t_size:
+                    sports_t_size = st_err if st_err else ""
+            else:
+                sports_t_size = ""
 
-            school_chest = calculate_garment_measure(row[mapping["chest"]], get_allowance("School T-Shirt"))
-            school_t_size, sc_err = match_size(school_chest, get_global_chart("School T-Shirt"), 'Value')
+            # School T-Shirt
+            if has_chest:
+                school_chest = calculate_garment_measure(chest_raw, get_allowance("School T-Shirt"))
+                school_t_size, sc_err = match_size(school_chest, get_global_chart("School T-Shirt"), 'Value')
+                if not school_t_size:
+                    school_t_size = sc_err if sc_err else ""
+            else:
+                school_t_size = ""
 
-            sports_waist = calculate_garment_measure(row[mapping["waist"]], get_allowance("Sports Track Pant"))
-            sports_p_size, sp_err = match_size(sports_waist, get_global_chart("Sports Track Pant"), 'Value')
+            # Sports Track Pant
+            if has_waist:
+                sports_waist = calculate_garment_measure(waist_raw, get_allowance("Sports Track Pant"))
+                sports_p_size, sp_err = match_size(sports_waist, get_global_chart("Sports Track Pant"), 'Value')
+                if not sports_p_size:
+                    sports_p_size = sp_err if sp_err else ""
+            else:
+                sports_p_size = ""
 
-            status = "OK" if (shirt_size and bottom_size) else "Error"
+            # Status logic
+            shirt_ok = has_chest and shirt_size and shirt_size not in ["Chart Missing", "Above Range", ""]
+            bottom_ok = has_waist and bottom_size and bottom_size not in ["Chart Missing", "Above Range", ""]
+            
+            if shirt_ok and bottom_ok:
+                status = "OK"
+            elif shirt_ok or bottom_ok:
+                status = "Partial"
+            else:
+                status = "Error"
 
             result_row = {
-                "Enrollment Code": row[mapping["enr"]],
-                "Student Name": row[mapping["name"]],
-                "Class Number": row[mapping["class_num"]],
-                "Class Name": row[mapping["class_name"]],
-                "Gender": row[mapping["gender"]],
-                "Admission Type": row[mapping["adm_type"]],
-                "House Colour": row[mapping["house"]],
-                "Chest": row.get(mapping.get("chest", ""), ""),
-                "Waist": row.get(mapping.get("waist", ""), ""),
-                "Shirt Size": shirt_size if shirt_size else s_err,
+                "Enrollment Code": str(row[mapping["enr"]]) if not pd.isna(row[mapping["enr"]]) else "",
+                "Student Name": str(row[mapping["name"]]) if not pd.isna(row[mapping["name"]]) else "",
+                "Class Number": str(row[mapping["class_num"]]) if not pd.isna(row[mapping["class_num"]]) else "",
+                "Class Name": str(row[mapping["class_name"]]) if not pd.isna(row[mapping["class_name"]]) else "",
+                "Gender": str(row[mapping["gender"]]) if not pd.isna(row[mapping["gender"]]) else "",
+                "Admission Type": str(row[mapping["adm_type"]]) if not pd.isna(row[mapping["adm_type"]]) else "",
+                "House Colour": str(row[mapping["house"]]) if not pd.isna(row[mapping["house"]]) else "",
+                "Chest": chest_raw if has_chest else "",
+                "Waist": waist_raw if has_waist else "",
+                "Shirt Size": shirt_size,
                 "Bottom Type": bottom_type,
-                "Bottom Size": bottom_size if bottom_size else b_err,
-                "Sports T-Shirt": sports_t_size if sports_t_size else st_err,
-                "School T-Shirt": school_t_size if school_t_size else sc_err,
-                "Sports Track Pant": sports_p_size if sports_p_size else sp_err,
+                "Bottom Size": bottom_size,
+                "Sports T-Shirt": sports_t_size,
+                "School T-Shirt": school_t_size,
+                "Sports Track Pant": sports_p_size,
                 "Status": status
             }
             if "length" in mapping and mapping["length"]:
-                result_row["Length"] = row.get(mapping["length"], "")
-            results.append(result_row)
+                result_row["Length"] = clean_val(row.get(mapping["length"]))
 
+            # Upsert to database with school isolation
+            upsert_student(school_id, {
+                "enrollment_code": result_row["Enrollment Code"],
+                "student_name": result_row["Student Name"],
+                "class_number": result_row["Class Number"],
+                "class_name": result_row["Class Name"],
+                "gender": result_row["Gender"],
+                "admission_type": result_row["Admission Type"],
+                "house_colour": result_row["House Colour"],
+                "chest": result_row.get("Chest") if has_chest else None,
+                "waist": result_row.get("Waist") if has_waist else None,
+                "length": result_row.get("Length"),
+                "shirt_size": str(result_row["Shirt Size"]) if result_row["Shirt Size"] != "" else None,
+                "bottom_type": result_row["Bottom Type"] if result_row["Bottom Type"] != "" else None,
+                "bottom_size": str(result_row["Bottom Size"]) if result_row["Bottom Size"] != "" else None,
+                "sports_tee_size": str(result_row["Sports T-Shirt"]) if result_row["Sports T-Shirt"] != "" else None,
+                "school_tee_size": str(result_row["School T-Shirt"]) if result_row["School T-Shirt"] != "" else None,
+                "sports_pant_size": str(result_row["Sports Track Pant"]) if result_row["Sports Track Pant"] != "" else None,
+                "status": result_row["Status"]
+            })
+
+            results.append(result_row)
         except Exception as e:
             err_row = {
-                "Enrollment Code": row.get(mapping.get("enr", "Unknown"), "Unknown"),
-                "Student Name": row.get(mapping.get("name", "Unknown"), "Unknown"),
-                "Class Number": row.get(mapping.get("class_num", "Unknown"), "Unknown"),
-                "Class Name": row.get(mapping.get("class_name", "Unknown"), "Unknown"),
-                "Gender": row.get(mapping.get("gender", "Unknown"), "Unknown"),
-                "Admission Type": row.get(mapping.get("adm_type", "Unknown"), "Unknown"),
-                "House Colour": row.get(mapping.get("house", "Unknown"), "Unknown"),
-                "Chest": "",
-                "Waist": "",
+                "Enrollment Code": str(row.get(mapping.get("enr", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("enr", "Unknown"), "Unknown")) else "Unknown",
+                "Student Name": str(row.get(mapping.get("name", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("name", "Unknown"), "Unknown")) else "Unknown",
+                "Class Number": str(row.get(mapping.get("class_num", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("class_num", "Unknown"), "Unknown")) else "Unknown",
+                "Class Name": str(row.get(mapping.get("class_name", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("class_name", "Unknown"), "Unknown")) else "Unknown",
+                "Gender": str(row.get(mapping.get("gender", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("gender", "Unknown"), "Unknown")) else "Unknown",
+                "Admission Type": str(row.get(mapping.get("adm_type", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("adm_type", "Unknown"), "Unknown")) else "Unknown",
+                "House Colour": str(row.get(mapping.get("house", "Unknown"), "Unknown")) if not pd.isna(row.get(mapping.get("house", "Unknown"), "Unknown")) else "Unknown",
+                "Chest": None,
+                "Waist": None,
                 "Shirt Size": "Error",
                 "Bottom Type": "Error",
                 "Bottom Size": "Error",
@@ -204,7 +290,7 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
             }
             results.append(err_row)
 
-
+    results = sanitize_records(results)
     res_df = pd.DataFrame(results)
 
     try:
@@ -227,22 +313,10 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
         with open(temp_path, "wb") as f:
             f.write(excel_bytes)
 
-        import math
-        def sanitize(val):
-            if isinstance(val, float):
-                if math.isnan(val) or math.isinf(val):
-                    return None
-            return val
-
-        clean_results = []
-        for row in results:
-            clean_row = {k: sanitize(v) for k, v in row.items()}
-            clean_results.append(clean_row)
-
-        return {"status": "success", "data": clean_results, "file_id": file_id}
-
+        return {"status": "success", "data": results, "file_id": file_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
 
 @app.get("/download")
 def download():
@@ -256,6 +330,94 @@ def list_history():
     df = get_history()
     return df.to_dict(orient="records")
 
+# ============== STUDENT ENDPOINTS (School Isolated) ==============
+
+@app.get("/students")
+def list_students(school_id: int, search: str = None):
+    school = get_school_by_id(school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    df = get_students_by_school(school_id, search)
+    records = df.to_dict(orient="records")
+    return sanitize_records(records)
+
+@app.get("/students/{student_id}")
+def get_student(student_id: int, school_id: int):
+    school = get_school_by_id(school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    row = get_student_by_id(student_id, school_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Student not found")
+    keys = [k[0] for k in row.cursor.description] if hasattr(row, 'cursor') else [
+        "id", "school_id", "enrollment_code", "student_name", "class_number", "class_name",
+        "gender", "admission_type", "house_colour", "chest", "waist", "length",
+        "shirt_size", "bottom_type", "bottom_size", "sports_tee_size",
+        "school_tee_size", "sports_pant_size", "status", "created_at", "updated_at"
+    ]
+    return dict(zip(keys, row))
+
+@app.put("/students/{student_id}")
+def edit_student(student_id: int, school_id: int, data: dict):
+    school = get_school_by_id(school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    row = get_student_by_id(student_id, school_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Recalculate sizes if measurements changed
+    if data.get("chest") is not None or data.get("waist") is not None:
+        chest = data.get("chest")
+        waist = data.get("waist")
+        
+        g_chest = calculate_garment_measure(chest, get_allowance("Shirt")) if chest is not None else None
+        shirt_size, _ = match_size(g_chest, get_global_chart("Shirt"), 'Value')
+        
+        gender_val = str(data.get("gender", "")).upper().strip()
+        class_num = str(data.get("class_number", ""))
+        if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
+            bottom_type, target_chart = "Skirt", get_global_chart("Skirt")
+        elif "BOY" in gender_val or gender_val in ["M", "MALE"]:
+            is_junior = any(class_num.startswith(str(i)) for i in range(1, 6))
+            bottom_type, target_chart = ("Shorts", get_global_chart("Shorts")) if is_junior else ("Pant", get_global_chart("Pant"))
+        else:
+            bottom_type, target_chart = "Shorts", get_global_chart("Shorts")
+        
+        g_waist = calculate_garment_measure(waist, get_allowance(bottom_type)) if waist is not None else None
+        bottom_size, _ = match_size(g_waist, target_chart, 'Value')
+        
+        sports_chest = calculate_garment_measure(chest, get_allowance("Sports T-Shirt")) if chest is not None else None
+        sports_t_size, _ = match_size(sports_chest, get_global_chart("Sports T-Shirt"), 'Value')
+        
+        school_chest = calculate_garment_measure(chest, get_allowance("School T-Shirt")) if chest is not None else None
+        school_t_size, _ = match_size(school_chest, get_global_chart("School T-Shirt"), 'Value')
+        
+        sports_waist = calculate_garment_measure(waist, get_allowance("Sports Track Pant")) if waist is not None else None
+        sports_p_size, _ = match_size(sports_waist, get_global_chart("Sports Track Pant"), 'Value')
+        
+        data["shirt_size"] = shirt_size if shirt_size else "Invalid"
+        data["bottom_type"] = bottom_type
+        data["bottom_size"] = bottom_size if bottom_size else "Invalid"
+        data["sports_tee_size"] = sports_t_size if sports_t_size else "Invalid"
+        data["school_tee_size"] = school_t_size if school_t_size else "Invalid"
+        data["sports_pant_size"] = sports_p_size if sports_p_size else "Invalid"
+        data["status"] = "OK" if (shirt_size and bottom_size) else "Error"
+    
+    update_student_data(student_id, school_id, data)
+    return {"status": "updated"}
+
+@app.delete("/students/{student_id}")
+def remove_student(student_id: int, school_id: int):
+    school = get_school_by_id(school_id)
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    row = get_student_by_id(student_id, school_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Student not found")
+    delete_student(student_id, school_id)
+    return {"status": "deleted"}
+
 @app.get("/")
 def root():
-    return {"message": "Central Uniform Sizer API v2.0.0", "status": "running"}
+    return {"message": "Central Uniform Sizer API v2.1.0", "status": "running"}

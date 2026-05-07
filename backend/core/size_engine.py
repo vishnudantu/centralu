@@ -13,7 +13,7 @@ def calculate_garment_measure(body_measure, allowance):
 
 def match_size(garment_value, chart_df, measure_col='Value'):
     if garment_value is None:
-        return None, "Invalid Measure"
+        return None, None  # No measurement = not an error
     if chart_df is None or chart_df.empty:
         return None, "Chart Missing"
     
