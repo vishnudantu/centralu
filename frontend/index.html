@@ -557,7 +557,11 @@ const TemplatesView = ({ schools, fetchSchools }) => {
     loadAllowances();
   }, []);
 
-  const showMsg = (msg, sev = 'success') => setSnackbar({ open: true, message: msg, severity: sev });
+  const showMsg = (msg, sev = 'success') => {
+  const text = typeof msg === 'string' ? msg : (msg?.message ? String(msg.message) : JSON.stringify(msg));
+  setSnackbar({ open: true, message: text, severity: sev });
+};
+
 
   const loadCharts = async () => {
     try {
