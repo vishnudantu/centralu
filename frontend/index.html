@@ -278,8 +278,9 @@ const Analytics = (props) => <Icon {...props}>analytics</Icon>;
 const ProcessView = ({ schools }) => {
   const [step, setStep] = React.useState(1);
   const [selectedSchool, setSelectedSchool] = React.useState('');
-  const [file, setFile] = React.useState(null);
-  const [columns, setColumns] = React.useState([]);
+  const [workbook, setWorkbook] = React.useState(null);
+  const [sheetNames, setSheetNames] = React.useState([]);
+  const [selectedSheet, setSelectedSheet] = React.useState('');
   const [mapping, setMapping] = React.useState({
     enr: '', name: '', class_num: '', class_name: '', 
     gender: '', adm_type: '', house: '', chest: '', waist: '', length: ''
@@ -317,7 +318,7 @@ const ProcessView = ({ schools }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const handleFileUpload = (e) => {
+   const handleFileUpload = (e) => {
     const f = e.target.files[0];
     if (!f) return;
     setFile(f);
@@ -327,23 +328,41 @@ const ProcessView = ({ schools }) => {
     reader.onload = (evt) => {
       try {
         const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const headers = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })[0] || [];
-        const headerStrings = headers.map(String);
-        setColumns(headerStrings);
-        const detected = detectMapping(headerStrings);
-        setMapping(detected);
-        setStep(3);
-
+        const wb = XLSX.read(data, { type: 'array' });
+        setWorkbook(wb);
+        setSheetNames(wb.SheetNames);
+        if (wb.SheetNames.length === 1) {
+          setSelectedSheet(wb.SheetNames[0]);
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const headers = XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || [];
+          const headerStrings = headers.map(String);
+          setColumns(headerStrings);
+          const detected = detectMapping(headerStrings);
+          setMapping(detected);
+          setStep(3);
+        }
+        setLoading(false);
       } catch (err) {
         setError('Failed to parse Excel. Ensure it is a valid .xlsx file.');
-      } finally {
         setLoading(false);
       }
     };
     reader.onerror = () => { setError('Failed to read file'); setLoading(false); };
     reader.readAsArrayBuffer(f);
+  };
+
+  const handleSelectSheet = () => {
+    if (!selectedSheet) {
+      setError('Please select a sheet');
+      return;
+    }
+    const sheet = workbook.Sheets[selectedSheet];
+    const headers = XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || [];
+    const headerStrings = headers.map(String);
+    setColumns(headerStrings);
+    const detected = detectMapping(headerStrings);
+    setMapping(detected);
+    setStep(3);
   };
 
   const handleProcess = async () => {
@@ -353,6 +372,7 @@ const ProcessView = ({ schools }) => {
     formData.append('file', file);
     formData.append('school_id', selectedSchool);
     formData.append('mapping', JSON.stringify(mapping));
+    formData.append('sheet_name', selectedSheet);
     
     try {
       const res = await fetch(`${API_BASE}/process`, {
@@ -372,6 +392,7 @@ const ProcessView = ({ schools }) => {
       setLoading(false);
     }
   };
+
 
   const mappingFields = [
     { key: 'enr', label: 'Enrollment Code' },
@@ -439,19 +460,38 @@ const ProcessView = ({ schools }) => {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Upload an Excel file with student measurements. We will detect the columns automatically.
           </Typography>
-          <Button variant="outlined" component="label" fullWidth sx={{ py: 3, border: '2px dashed', borderColor: 'grey.400' }}>
-            <Upload sx={{ mr: 1 }} /> Choose Excel File
-            <input type="file" accept=".xlsx,.xls" hidden onChange={handleFileUpload} />
-          </Button>
+          {!file && (
+            <Button variant="outlined" component="label" fullWidth sx={{ py: 3, border: '2px dashed', borderColor: 'grey.400' }}>
+              <Upload sx={{ mr: 1 }} /> Choose Excel File
+              <input type="file" accept=".xlsx,.xls" hidden onChange={handleFileUpload} />
+            </Button>
+          )}
           {loading && <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}><CircularProgress size={20} /> Reading file...</Box>}
+          
+          {file && sheetNames.length > 1 && (
+            <Box sx={{ mt: 3 }}>
+              <FormControl fullWidth>
+                <InputLabel>Select Sheet</InputLabel>
+                <Select value={selectedSheet} label="Select Sheet" onChange={e => setSelectedSheet(e.target.value)}>
+                  <MenuItem value=""><em>Choose a sheet...</em></MenuItem>
+                  {sheetNames.map(name => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <Button variant="contained" sx={{ mt: 2 }} fullWidth onClick={handleSelectSheet} disabled={!selectedSheet}>
+                Next: Map Columns →
+              </Button>
+            </Box>
+          )}
+          
           <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-            <Button onClick={() => setStep(1)}>Back</Button>
+            <Button onClick={() => { setStep(1); setFile(null); setWorkbook(null); setSheetNames([]); setSelectedSheet(''); }}>Back</Button>
             <Button variant="outlined" onClick={() => window.open(`${API_BASE}/template`, '_blank')}>
               Download Template
             </Button>
           </Box>
         </Card>
       )}
+
 
       {step === 3 && (
         <Card sx={{ p: 4 }}>
