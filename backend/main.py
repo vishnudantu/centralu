@@ -227,7 +227,20 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
         with open(temp_path, "wb") as f:
             f.write(excel_bytes)
 
-        return {"status": "success", "data": results, "file_id": file_id}
+        import math
+        def sanitize(val):
+            if isinstance(val, float):
+                if math.isnan(val) or math.isinf(val):
+                    return None
+            return val
+
+        clean_results = []
+        for row in results:
+            clean_row = {k: sanitize(v) for k, v in row.items()}
+            clean_results.append(clean_row)
+
+        return {"status": "success", "data": clean_results, "file_id": file_id}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
