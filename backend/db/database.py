@@ -89,8 +89,10 @@ def init_db():
 
     defaults = {
         "Shirt": 3.0, "Pant": 1.0, "Skirt": 1.0, "Shorts": 1.0,
+        "PP Shorts": 1.0, "PP Skirts": 1.0,
         "Sports T-Shirt": 3.0, "School T-Shirt": 3.0, "Sports Track Pant": 1.0
     }
+
     for item, val in defaults.items():
         cursor.execute(
             "INSERT OR IGNORE INTO allowances (item_type, value) VALUES (?, ?)",

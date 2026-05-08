@@ -77,7 +77,7 @@ def remove_school(school_id: int):
 
 @app.get("/charts")
 def get_charts():
-    items = ["Shirt", "Pant", "Skirt", "Shorts", "Sports T-Shirt", "School T-Shirt", "Sports Track Pant"]
+        items = ["Shirt", "Pant", "Skirt", "Shorts", "PP Shorts", "PP Skirts", "Sports T-Shirt", "School T-Shirt", "Sports Track Pant"]
     return {item: get_global_chart(item).to_dict(orient="records") for item in items}
 
 @app.post("/charts/{item_type}")
@@ -219,16 +219,24 @@ async def process_sizing(file: UploadFile = File(...), school_id: int = Form(...
                 shirt_size = ""
 
             # Determine bottom type from gender/class
-            grade_val = str(row[mapping["class_num"]]) if not pd.isna(row[mapping["class_num"]]) else ""
+            grade_val = str(row[mapping["class_num"]]).upper().strip() if not pd.isna(row[mapping["class_num"]]) else ""
             gender_val = str(row[mapping["gender"]]).upper().strip() if not pd.isna(row[mapping["gender"]]) else ""
 
-            if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
+            is_pp = any(x in grade_val for x in ["NUR", "PP1", "PP2"]) or "PP" in grade_val
+
+            if is_pp:
+                if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
+                    bottom_type, target_chart = "PP Skirts", get_global_chart("PP Skirts")
+                else:
+                    bottom_type, target_chart = "PP Shorts", get_global_chart("PP Shorts")
+            elif "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
                 bottom_type, target_chart = "Skirt", get_global_chart("Skirt")
             elif "BOY" in gender_val or gender_val in ["M", "MALE"]:
                 is_junior = any(grade_val.startswith(str(i)) for i in range(1, 6))
                 bottom_type, target_chart = ("Shorts", get_global_chart("Shorts")) if is_junior else ("Pant", get_global_chart("Pant"))
             else:
                 bottom_type, target_chart = "Shorts", get_global_chart("Shorts")
+
 
             # Bottom
             if has_waist:
@@ -427,14 +435,23 @@ def edit_student(student_id: int, school_id: int, data: dict):
         shirt_size, _ = match_size(g_chest, get_global_chart("Shirt"), 'Value')
         
         gender_val = str(data.get("gender", "")).upper().strip()
-        class_num = str(data.get("class_number", ""))
-        if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
+        class_num = str(data.get("class_number", "")).upper().strip()
+
+        is_pp = any(x in class_num for x in ["NUR", "PP1", "PP2"]) or "PP" in class_num
+
+        if is_pp:
+            if "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
+                bottom_type, target_chart = "PP Skirts", get_global_chart("PP Skirts")
+            else:
+                bottom_type, target_chart = "PP Shorts", get_global_chart("PP Shorts")
+        elif "GIRL" in gender_val or gender_val in ["F", "FEMALE"]:
             bottom_type, target_chart = "Skirt", get_global_chart("Skirt")
         elif "BOY" in gender_val or gender_val in ["M", "MALE"]:
             is_junior = any(class_num.startswith(str(i)) for i in range(1, 6))
             bottom_type, target_chart = ("Shorts", get_global_chart("Shorts")) if is_junior else ("Pant", get_global_chart("Pant"))
         else:
             bottom_type, target_chart = "Shorts", get_global_chart("Shorts")
+
         
         g_waist = calculate_garment_measure(waist, get_allowance(bottom_type)) if waist is not None else None
         bottom_size, _ = match_size(g_waist, target_chart, 'Value')
